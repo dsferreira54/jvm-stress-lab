@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>JVM Stress Lab — JVM Monitor</title>
+	<style>
+		:root {
+			--bg: #0f1419;
+			--surface: #1a2332;
+			--surface2: #243044;
+			--border: #2d3a4f;
+			--text: #e8edf4;
+			--muted: #8b9cb3;
+			--accent: #3b82f6;
+			--danger: #ef4444;
+			--warn: #f59e0b;
+			--ok: #22c55e;
+			--cpu: #f97316;
+			--heap: #a855f7;
+			--thread: #06b6d4;
+		}
+		* { box-sizing: border-box; margin: 0; padding: 0; }
+		body {
+			font-family: "Segoe UI", system-ui, sans-serif;
+			background: var(--bg);
+			color: var(--text);
+			min-height: 100vh;
+			padding: 1.5rem;
+		}
+		header {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			margin-bottom: 1.5rem;
+			gap: 1rem;
+			flex-wrap: wrap;
+		}
+		h1 { font-size: 1.5rem; font-weight: 700; }
+		.subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+		.header-meta {
+			display: flex;
+			flex-direction: column;
+			gap: 0.5rem;
+			align-items: flex-end;
+		}
+		.uptime {
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			padding: 0.6rem 1rem;
+			font-size: 0.85rem;
+			color: var(--muted);
+		}
+		.uptime strong { color: var(--text); }
+		.layout {
+			display: grid;
+			grid-template-columns: 1fr 1.2fr;
+			gap: 1.25rem;
+		}
+		@media (max-width: 960px) {
+			.layout { grid-template-columns: 1fr; }
+		}
+		.panel {
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			padding: 1.25rem;
+		}
+		.panel h2 {
+			font-size: 0.75rem;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 1rem;
+		}
+		.stress-card {
+			background: var(--surface2);
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 1rem;
+			margin-bottom: 0.85rem;
+		}
+		.stress-card:last-child { margin-bottom: 0; }
+		.card-header {
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+			margin-bottom: 0.75rem;
+		}
+		.dot {
+			width: 8px; height: 8px;
+			border-radius: 50%;
+			background: var(--muted);
+		}
+		.dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+		.card-title { font-weight: 600; font-size: 0.95rem; }
+		.card-badge {
+			margin-left: auto;
+			font-size: 0.75rem;
+			padding: 0.15rem 0.5rem;
+			border-radius: 99px;
+			background: var(--border);
+			color: var(--muted);
+		}
+		.card-badge.on { background: rgba(34,197,94,0.15); color: var(--ok); }
+		label {
+			display: flex;
+			justify-content: space-between;
+			font-size: 0.82rem;
+			color: var(--muted);
+			margin-bottom: 0.35rem;
+		}
+		input[type="range"] {
+			width: 100%;
+			accent-color: var(--accent);
+			margin-bottom: 0.75rem;
+		}
+		.btn-row { display: flex; gap: 0.5rem; }
+		button {
+			flex: 1;
+			padding: 0.55rem 0.75rem;
+			border: none;
+			border-radius: 6px;
+			font-size: 0.85rem;
+			font-weight: 600;
+			cursor: pointer;
+			transition: opacity 0.15s;
+		}
+		button:disabled { opacity: 0.4; cursor: not-allowed; }
+		.btn-start { background: var(--danger); color: #fff; }
+		.btn-stop { background: var(--border); color: var(--text); }
+		.btn-all {
+			width: 100%;
+			margin-top: 0.85rem;
+			background: #374151;
+			color: var(--text);
+		}
+		.metrics-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 0.75rem;
+			margin-bottom: 1rem;
+		}
+		.metric-box {
+			background: var(--surface2);
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 0.85rem;
+		}
+		.metric-box.wide { grid-column: 1 / -1; }
+		.metric-label {
+			font-size: 0.72rem;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--muted);
+			margin-bottom: 0.35rem;
+		}
+		.metric-value {
+			font-size: 1.4rem;
+			font-weight: 700;
+			font-variant-numeric: tabular-nums;
+		}
+		.metric-sub {
+			font-size: 0.78rem;
+			color: var(--muted);
+			margin-top: 0.2rem;
+		}
+		.bar-track {
+			height: 6px;
+			background: var(--border);
+			border-radius: 99px;
+			margin-top: 0.5rem;
+			overflow: hidden;
+		}
+		.bar-fill {
+			height: 100%;
+			border-radius: 99px;
+			transition: width 0.4s ease;
+		}
+		.bar-fill.cpu { background: var(--cpu); }
+		.bar-fill.heap { background: var(--heap); }
+		.bar-fill.thread { background: var(--thread); }
+		.chart-wrap {
+			background: var(--surface2);
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 0.85rem;
+			margin-bottom: 0.75rem;
+		}
+		.chart-wrap:last-child { margin-bottom: 0; }
+		.chart-title {
+			font-size: 0.78rem;
+			color: var(--muted);
+			margin-bottom: 0.5rem;
+		}
+		canvas { width: 100%; height: 80px; display: block; }
+		.gc-list { font-size: 0.8rem; color: var(--muted); }
+		.gc-item {
+			display: flex;
+			justify-content: space-between;
+			padding: 0.35rem 0;
+			border-bottom: 1px solid var(--border);
+		}
+		.gc-item:last-child { border-bottom: none; }
+		.pulse {
+			display: inline-block;
+			width: 6px; height: 6px;
+			border-radius: 50%;
+			background: var(--ok);
+			margin-right: 0.4rem;
+			animation: pulse 1.5s infinite;
+		}
+		@keyframes pulse {
+			0%, 100% { opacity: 1; }
+			50% { opacity: 0.3; }
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<div>
+			<h1>JVM Stress Lab</h1>
+			<p class="subtitle">Simulação de carga e monitoramento JVM em tempo real</p>
+		</div>
+		<div class="header-meta">
+			<div class="uptime">
+				<span class="pulse"></span>Host: <strong id="hostname">—</strong>
+			</div>
+			<div class="uptime">
+				Uptime: <strong id="uptime">—</strong>
+			</div>
+		</div>
+	</header>
+
+	<div class="layout">
+		<section class="panel">
+			<h2>Controles de estresse</h2>
+
+			<div class="stress-card" id="cpuCard">
+				<div class="card-header">
+					<span class="dot" id="cpuDot"></span>
+					<span class="card-title">CPU</span>
+					<span class="card-badge" id="cpuBadge">Parado</span>
+				</div>
+				<label>Threads: <span id="cpuThreadsVal">4</span></label>
+				<input type="range" id="cpuThreads" min="1" max="16" value="4">
+				<div class="btn-row">
+					<button class="btn-start" id="cpuStart">Iniciar</button>
+					<button class="btn-stop" id="cpuStop" disabled>Parar</button>
+				</div>
+			</div>
+
+			<div class="stress-card" id="heapCard">
+				<div class="card-header">
+					<span class="dot" id="heapDot"></span>
+					<span class="card-title">Heap (memória)</span>
+					<span class="card-badge" id="heapBadge">Parado</span>
+				</div>
+				<label>Alocar: <span id="heapMbVal">128</span> MB</label>
+				<input type="range" id="heapMb" min="32" max="512" step="32" value="128">
+				<div class="btn-row">
+					<button class="btn-start" id="heapStart">Iniciar</button>
+					<button class="btn-stop" id="heapStop" disabled>Parar</button>
+				</div>
+			</div>
+
+			<div class="stress-card" id="threadCard">
+				<div class="card-header">
+					<span class="dot" id="threadDot"></span>
+					<span class="card-title">Threads bloqueadas</span>
+					<span class="card-badge" id="threadBadge">Parado</span>
+				</div>
+				<label>Quantidade: <span id="threadCountVal">50</span></label>
+				<input type="range" id="threadCount" min="10" max="300" step="10" value="50">
+				<div class="btn-row">
+					<button class="btn-start" id="threadStart">Iniciar</button>
+					<button class="btn-stop" id="threadStop" disabled>Parar</button>
+				</div>
+			</div>
+
+			<button class="btn-all" id="stopAll">Parar tudo</button>
+		</section>
+
+		<section class="panel">
+			<h2>Métricas em tempo real</h2>
+
+			<div class="metrics-grid">
+				<div class="metric-box">
+					<div class="metric-label">CPU do processo</div>
+					<div class="metric-value" id="cpuLoad">—</div>
+					<div class="bar-track"><div class="bar-fill cpu" id="cpuBar" style="width:0%"></div></div>
+					<div class="metric-sub" id="cpuSub">—</div>
+				</div>
+				<div class="metric-box">
+					<div class="metric-label">CPU do sistema</div>
+					<div class="metric-value" id="sysLoad">—</div>
+					<div class="metric-sub" id="sysSub">—</div>
+				</div>
+				<div class="metric-box wide">
+					<div class="metric-label">Heap JVM</div>
+					<div class="metric-value" id="heapUsed">—</div>
+					<div class="bar-track"><div class="bar-fill heap" id="heapBar" style="width:0%"></div></div>
+					<div class="metric-sub" id="heapSub">—</div>
+				</div>
+				<div class="metric-box">
+					<div class="metric-label">Threads vivas</div>
+					<div class="metric-value" id="threadLive">—</div>
+					<div class="bar-track"><div class="bar-fill thread" id="threadBar" style="width:0%"></div></div>
+					<div class="metric-sub" id="threadSub">—</div>
+				</div>
+				<div class="metric-box">
+					<div class="metric-label">Non-heap</div>
+					<div class="metric-value" id="nonHeapUsed">—</div>
+					<div class="metric-sub" id="nonHeapSub">—</div>
+				</div>
+			</div>
+
+			<div class="chart-wrap">
+				<div class="chart-title">Histórico CPU (processo) — últimos 60s</div>
+				<canvas id="cpuChart"></canvas>
+			</div>
+			<div class="chart-wrap">
+				<div class="chart-title">Histórico Heap — últimos 60s</div>
+				<canvas id="heapChart"></canvas>
+			</div>
+			<div class="chart-wrap">
+				<div class="metric-label" style="margin-bottom:0.5rem">Garbage Collectors</div>
+				<div class="gc-list" id="gcList">—</div>
+			</div>
+		</section>
+	</div>
+
+	<script>
+		const HISTORY_LEN = 60;
+		const cpuHistory = [];
+		const heapHistory = [];
+
+		const $ = (id) => document.getElementById(id);
+
+		function bindSlider(sliderId, labelId) {
+			const slider = $(sliderId);
+			const label = $(labelId);
+			slider.addEventListener('input', () => label.textContent = slider.value);
+		}
+
+		bindSlider('cpuThreads', 'cpuThreadsVal');
+		bindSlider('heapMb', 'heapMbVal');
+		bindSlider('threadCount', 'threadCountVal');
+
+		function formatBytes(bytes) {
+			if (bytes < 1024) return bytes + ' B';
+			if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+			if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+			return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+		}
+
+		function formatUptime(ms) {
+			const s = Math.floor(ms / 1000);
+			const m = Math.floor(s / 60);
+			const h = Math.floor(m / 60);
+			if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
+			if (m > 0) return `${m}m ${s % 60}s`;
+			return `${s}s`;
+		}
+
+		function setStressCard(prefix, active, badgeText, disableStart) {
+			$(prefix + 'Dot').className = 'dot' + (active ? ' on' : '');
+			const badge = $(prefix + 'Badge');
+			badge.textContent = badgeText;
+			badge.className = 'card-badge' + (active ? ' on' : '');
+			$(prefix + 'Start').disabled = disableStart || active;
+			$(prefix + 'Stop').disabled = !active;
+		}
+
+		function drawChart(canvasId, data, color) {
+			const canvas = $(canvasId);
+			const ctx = canvas.getContext('2d');
+			const dpr = window.devicePixelRatio || 1;
+			const w = canvas.clientWidth;
+			const h = canvas.clientHeight;
+			canvas.width = w * dpr;
+			canvas.height = h * dpr;
+			ctx.scale(dpr, dpr);
+			ctx.clearRect(0, 0, w, h);
+
+			if (data.length < 2) return;
+
+			const max = Math.max(...data, 1);
+			const step = w / (HISTORY_LEN - 1);
+
+			ctx.beginPath();
+			ctx.strokeStyle = color;
+			ctx.lineWidth = 2;
+			data.forEach((v, i) => {
+				const x = i * step;
+				const y = h - (v / max) * (h - 8) - 4;
+				i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+			});
+			ctx.stroke();
+
+			ctx.lineTo((data.length - 1) * step, h);
+			ctx.lineTo(0, h);
+			ctx.closePath();
+			ctx.fillStyle = color + '22';
+			ctx.fill();
+		}
+
+		function updateMetrics(m) {
+			$('hostname').textContent = m.hostname || '—';
+			$('uptime').textContent = formatUptime(m.uptimeMs);
+
+			const cpu = m.cpu;
+			$('cpuLoad').textContent = cpu.processLoad + '%';
+			$('cpuBar').style.width = Math.min(cpu.processLoad, 100) + '%';
+			$('cpuSub').textContent = cpu.availableProcessors + ' processadores disponíveis';
+			$('sysLoad').textContent = cpu.systemLoad + '%';
+			$('sysSub').textContent = 'Carga média do sistema';
+
+			const heap = m.heap;
+			$('heapUsed').textContent = formatBytes(heap.usedBytes);
+			$('heapBar').style.width = Math.min(heap.usedPercent, 100) + '%';
+			$('heapSub').textContent =
+				`${formatBytes(heap.usedBytes)} / ${formatBytes(heap.maxBytes)} (${heap.usedPercent}%)`;
+
+			const nh = m.nonHeap;
+			$('nonHeapUsed').textContent = formatBytes(nh.usedBytes);
+			$('nonHeapSub').textContent =
+				`committed: ${formatBytes(nh.committedBytes)}`;
+
+			const th = m.threads;
+			$('threadLive').textContent = th.live;
+			const threadPct = Math.min((th.live / Math.max(th.peak, 1)) * 100, 100);
+			$('threadBar').style.width = threadPct + '%';
+			$('threadSub').textContent =
+				`pico: ${th.peak} · daemon: ${th.daemon} · total iniciadas: ${th.started}`;
+
+			cpuHistory.push(cpu.processLoad);
+			heapHistory.push(heap.usedPercent);
+			if (cpuHistory.length > HISTORY_LEN) cpuHistory.shift();
+			if (heapHistory.length > HISTORY_LEN) heapHistory.shift();
+
+			drawChart('cpuChart', cpuHistory, '#f97316');
+			drawChart('heapChart', heapHistory, '#a855f7');
+
+			const gcList = $('gcList');
+			if (m.gc.length === 0) {
+				gcList.textContent = 'Nenhum GC registrado';
+			} else {
+				gcList.innerHTML = m.gc.map(g =>
+					`<div class="gc-item"><span>${g.name}</span><span>${g.collections} coletas · ${g.timeMs} ms</span></div>`
+				).join('');
+			}
+
+			const s = m.stress;
+			setStressCard('cpu', s.cpu.active, s.cpu.active ? `${s.cpu.threads} threads` : 'Parado');
+			setStressCard('heap', s.heap.active,
+				s.heap.active ? `${s.heap.allocatedMb}/${s.heap.targetMb} MB` : 'Parado');
+			setStressCard('thread', s.threads.active,
+				s.threads.active ? `${s.threads.count} threads` : 'Parado');
+
+			$('cpuThreads').disabled = s.cpu.active;
+			$('heapMb').disabled = s.heap.active;
+			$('threadCount').disabled = s.threads.active;
+			$('stopAll').disabled = !s.anyActive;
+		}
+
+		async function fetchMetrics() {
+			try {
+				const res = await fetch('/api/metrics');
+				updateMetrics(await res.json());
+			} catch (e) {
+				console.error('Erro ao buscar métricas', e);
+			}
+		}
+
+		async function post(url) {
+			const res = await fetch(url, { method: 'POST' });
+			updateMetrics(await res.json());
+		}
+
+		$('cpuStart').addEventListener('click', () =>
+			post(`/api/stress/cpu/start?threads=${$('cpuThreads').value}`));
+		$('cpuStop').addEventListener('click', () => post('/api/stress/cpu/stop'));
+		$('heapStart').addEventListener('click', () =>
+			post(`/api/stress/heap/start?targetMb=${$('heapMb').value}`));
+		$('heapStop').addEventListener('click', () => post('/api/stress/heap/stop'));
+		$('threadStart').addEventListener('click', () =>
+			post(`/api/stress/threads/start?count=${$('threadCount').value}`));
+		$('threadStop').addEventListener('click', () => post('/api/stress/threads/stop'));
+		$('stopAll').addEventListener('click', () => post('/api/stress/stop-all'));
+
+		fetchMetrics();
+		setInterval(fetchMetrics, 500);
+		window.addEventListener('resize', () => {
+			drawChart('cpuChart', cpuHistory, '#f97316');
+			drawChart('heapChart', heapHistory, '#a855f7');
+		});
+	</script>
+</body>
+</html>
