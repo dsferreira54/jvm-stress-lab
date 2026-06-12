@@ -65,6 +65,9 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
 ---
 apiVersion: v1
 kind: Service
@@ -81,6 +84,10 @@ spec:
     - name: http
       port: 8080
       targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 8081
+      targetPort: metrics
       protocol: TCP
 ---
 apiVersion: route.openshift.io/v1
