@@ -1,5 +1,7 @@
 package com.example.jvmstresslab;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,10 +14,16 @@ public class StressController {
 
 	private final StressService stressService;
 	private final MetricsService metricsService;
+	private final HostCapacityService hostCapacityService;
+	private final MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
 
-	public StressController(StressService stressService, MetricsService metricsService) {
+	public StressController(
+			StressService stressService,
+			MetricsService metricsService,
+			HostCapacityService hostCapacityService) {
 		this.stressService = stressService;
 		this.metricsService = metricsService;
+		this.hostCapacityService = hostCapacityService;
 	}
 
 	@GetMapping("/api/metrics")
@@ -29,8 +37,9 @@ public class StressController {
 	}
 
 	@PostMapping("/api/stress/cpu/start")
-	public Map<String, Object> startCpu(@RequestParam(defaultValue = "4") int threads) {
-		stressService.startCpu(threads);
+	public Map<String, Object> startCpu(@RequestParam(required = false) Integer threads) {
+		int count = threads != null ? threads : hostCapacityService.cpuDefault();
+		stressService.startCpu(count);
 		return metricsService.snapshot();
 	}
 
@@ -41,8 +50,9 @@ public class StressController {
 	}
 
 	@PostMapping("/api/stress/heap/start")
-	public Map<String, Object> startHeap(@RequestParam(defaultValue = "128") int targetMb) {
-		stressService.startHeap(targetMb);
+	public Map<String, Object> startHeap(@RequestParam(required = false) Integer targetMb) {
+		int mb = targetMb != null ? targetMb : hostCapacityService.heapDefault(memory.getHeapMemoryUsage());
+		stressService.startHeap(mb);
 		return metricsService.snapshot();
 	}
 
@@ -53,8 +63,9 @@ public class StressController {
 	}
 
 	@PostMapping("/api/stress/threads/start")
-	public Map<String, Object> startThreads(@RequestParam(defaultValue = "50") int count) {
-		stressService.startThreads(count);
+	public Map<String, Object> startThreads(@RequestParam(required = false) Integer count) {
+		int threads = count != null ? count : hostCapacityService.threadDefault();
+		stressService.startThreads(threads);
 		return metricsService.snapshot();
 	}
 

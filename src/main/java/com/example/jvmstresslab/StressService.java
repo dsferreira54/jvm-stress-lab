@@ -1,5 +1,7 @@
 package com.example.jvmstresslab;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +12,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class StressService {
+
+	private final HostCapacityService hostCapacityService;
+	private final MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
 
 	private final AtomicBoolean cpuActive = new AtomicBoolean(false);
 	private final List<Thread> cpuWorkers = new ArrayList<>();
@@ -22,11 +27,15 @@ public class StressService {
 	private final AtomicBoolean threadStressActive = new AtomicBoolean(false);
 	private final List<Thread> blockingThreads = new ArrayList<>();
 
+	public StressService(HostCapacityService hostCapacityService) {
+		this.hostCapacityService = hostCapacityService;
+	}
+
 	public synchronized void startCpu(int threads) {
 		stopCpu();
 		cpuActive.set(true);
 
-		int count = Math.clamp(threads, 1, 32);
+		int count = hostCapacityService.clampCpuThreads(threads);
 		for (int i = 0; i < count; i++) {
 			Thread worker = new Thread(this::burnCpu, "cpu-stress-" + i);
 			worker.setDaemon(true);
@@ -43,7 +52,7 @@ public class StressService {
 	public synchronized void startHeap(int targetMb) {
 		stopHeap();
 		heapActive.set(true);
-		heapTargetMb = Math.clamp(targetMb, 1, 1024);
+		heapTargetMb = hostCapacityService.clampHeapMb(targetMb, memory.getHeapMemoryUsage());
 
 		heapAllocator = new Thread(this::allocateHeap, "heap-stress");
 		heapAllocator.setDaemon(true);
@@ -61,7 +70,7 @@ public class StressService {
 		stopThreads();
 		threadStressActive.set(true);
 
-		int threadCount = Math.clamp(count, 1, 500);
+		int threadCount = hostCapacityService.clampThreadCount(count);
 		for (int i = 0; i < threadCount; i++) {
 			Thread worker = new Thread(this::blockThread, "thread-stress-" + i);
 			worker.setDaemon(true);

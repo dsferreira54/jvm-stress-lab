@@ -20,11 +20,13 @@ import com.sun.management.OperatingSystemMXBean;
 public class MetricsService {
 
 	private final StressService stressService;
+	private final HostCapacityService hostCapacityService;
 	private final long startedAt = System.currentTimeMillis();
 	private final String hostname = resolveHostname();
 
-	public MetricsService(StressService stressService) {
+	public MetricsService(StressService stressService, HostCapacityService hostCapacityService) {
 		this.stressService = stressService;
+		this.hostCapacityService = hostCapacityService;
 	}
 
 	public Map<String, Object> snapshot() {
@@ -41,6 +43,7 @@ public class MetricsService {
 		metrics.put("nonHeap", memoryMetrics(memory.getNonHeapMemoryUsage()));
 		metrics.put("threads", threadMetrics(threads));
 		metrics.put("gc", gcMetrics());
+		metrics.put("capacity", hostCapacityService.snapshot(memory.getHeapMemoryUsage()));
 		metrics.put("stress", stressService.status());
 		return metrics;
 	}

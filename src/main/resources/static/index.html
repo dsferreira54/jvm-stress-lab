@@ -104,12 +104,22 @@
 			color: var(--muted);
 		}
 		.card-badge.on { background: rgba(34,197,94,0.15); color: var(--ok); }
+		.hint { font-weight: normal; color: var(--muted); font-size: 0.75rem; }
 		label {
 			display: flex;
 			justify-content: space-between;
+			align-items: center;
+			gap: 0.75rem;
 			font-size: 0.82rem;
 			color: var(--muted);
 			margin-bottom: 0.35rem;
+		}
+		.label-value {
+			white-space: nowrap;
+		}
+		.label-value strong {
+			color: var(--text);
+			font-weight: 600;
 		}
 		input[type="range"] {
 			width: 100%;
@@ -222,6 +232,7 @@
 		<div>
 			<h1>JVM Stress Lab</h1>
 			<p class="subtitle">Simulação de carga e monitoramento JVM em tempo real</p>
+			<p class="subtitle" id="hostCapacity">—</p>
 		</div>
 		<div class="header-meta">
 			<div class="uptime">
@@ -243,8 +254,11 @@
 					<span class="card-title">CPU</span>
 					<span class="card-badge" id="cpuBadge">Parado</span>
 				</div>
-				<label>Threads: <span id="cpuThreadsVal">4</span></label>
-				<input type="range" id="cpuThreads" min="1" max="16" value="4">
+				<label>
+					<span class="label-value">Threads: <strong id="cpuThreadsVal">—</strong></span>
+					<span class="hint" id="cpuMaxHint"></span>
+				</label>
+				<input type="range" id="cpuThreads" min="1" max="1" value="1" disabled>
 				<div class="btn-row">
 					<button class="btn-start" id="cpuStart">Iniciar</button>
 					<button class="btn-stop" id="cpuStop" disabled>Parar</button>
@@ -257,8 +271,11 @@
 					<span class="card-title">Heap (memória)</span>
 					<span class="card-badge" id="heapBadge">Parado</span>
 				</div>
-				<label>Alocar: <span id="heapMbVal">128</span> MB</label>
-				<input type="range" id="heapMb" min="32" max="512" step="32" value="128">
+				<label>
+					<span class="label-value">Alocar: <strong id="heapMbVal">—</strong> MB</span>
+					<span class="hint" id="heapMaxHint"></span>
+				</label>
+				<input type="range" id="heapMb" min="1" max="1" value="1" disabled>
 				<div class="btn-row">
 					<button class="btn-start" id="heapStart">Iniciar</button>
 					<button class="btn-stop" id="heapStop" disabled>Parar</button>
@@ -271,8 +288,11 @@
 					<span class="card-title">Threads bloqueadas</span>
 					<span class="card-badge" id="threadBadge">Parado</span>
 				</div>
-				<label>Quantidade: <span id="threadCountVal">50</span></label>
-				<input type="range" id="threadCount" min="10" max="300" step="10" value="50">
+				<label>
+					<span class="label-value">Quantidade: <strong id="threadCountVal">—</strong></span>
+					<span class="hint" id="threadMaxHint"></span>
+				</label>
+				<input type="range" id="threadCount" min="1" max="1" value="1" disabled>
 				<div class="btn-row">
 					<button class="btn-start" id="threadStart">Iniciar</button>
 					<button class="btn-stop" id="threadStop" disabled>Parar</button>
@@ -335,6 +355,7 @@
 		const HISTORY_LEN = 60;
 		const cpuHistory = [];
 		const heapHistory = [];
+		let slidersConfigured = false;
 
 		const $ = (id) => document.getElementById(id);
 
@@ -347,6 +368,25 @@
 		bindSlider('cpuThreads', 'cpuThreadsVal');
 		bindSlider('heapMb', 'heapMbVal');
 		bindSlider('threadCount', 'threadCountVal');
+
+		function configureSlider(sliderId, labelId, hintId, cfg, unit = '') {
+			const slider = $(sliderId);
+			slider.min = cfg.min;
+			slider.max = cfg.max;
+			slider.step = cfg.step;
+			slider.value = cfg.default;
+			slider.disabled = false;
+			$(labelId).textContent = cfg.default;
+			$(hintId).textContent = `(máx. ${cfg.max}${unit})`;
+		}
+
+		function configureSliders(capacity) {
+			if (slidersConfigured || !capacity) return;
+			configureSlider('cpuThreads', 'cpuThreadsVal', 'cpuMaxHint', capacity.cpu);
+			configureSlider('heapMb', 'heapMbVal', 'heapMaxHint', capacity.heap, ' MB');
+			configureSlider('threadCount', 'threadCountVal', 'threadMaxHint', capacity.threads);
+			slidersConfigured = true;
+		}
 
 		function formatBytes(bytes) {
 			if (bytes < 1024) return bytes + ' B';
@@ -407,8 +447,17 @@
 		}
 
 		function updateMetrics(m) {
+			configureSliders(m.capacity);
+
 			$('hostname').textContent = m.hostname || '—';
 			$('uptime').textContent = formatUptime(m.uptimeMs);
+
+			if (m.capacity) {
+				$('hostCapacity').textContent =
+					`${m.capacity.availableProcessors} CPUs · ` +
+					`${formatBytes(m.capacity.totalMemoryBytes)} RAM total · ` +
+					`${formatBytes(m.capacity.freeMemoryBytes)} RAM livre`;
+			}
 
 			const cpu = m.cpu;
 			$('cpuLoad').textContent = cpu.processLoad + '%';
