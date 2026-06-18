@@ -103,3 +103,20 @@ spec:
     name: demo-app
   port:
     targetPort: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-app
+  namespace: demo-app
+  labels:
+    app: demo-app
+spec:
+  selector:
+    matchLabels:
+      app: demo-app
+  endpoints:
+    - port: metrics
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
